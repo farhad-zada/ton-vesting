@@ -2,7 +2,7 @@ import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, Cell, toNano } from '@ton/core';
 import { Allocation } from '../build/Allocation/Allocation_Allocation';
 import '@ton/test-utils';
-import { storeClaim, storeClaimWithReceiver, ClaimWithReceiver } from '../build/Vesting/Vesting_Vesting';
+import { storeClaim } from '../build/Vesting/Vesting_Vesting';
 
 describe('Allocation', () => {
     let blockchain: Blockchain;
@@ -67,12 +67,17 @@ describe('Allocation', () => {
             },
             {
                 $$type: 'Claim',
+                receiver: null
             }
         );
 
         expect(result.transactions).toHaveTransaction({
             from: deployer.address,
             to: allocation.address,
+            body: beginCell().store(storeClaim({
+                $$type: 'Claim',
+                receiver: null
+            })).endCell(),
             deploy: false,
             success: true
         });
@@ -82,7 +87,7 @@ describe('Allocation', () => {
         expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
     });
 
-    it('should claim with receiver', async () => {
+    it('should claim with a receiver', async () => {
         let allocationStateBeforeClaim = await allocation.getAllocationState();
         expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
         expect(allocationStateBeforeClaim.claimed).toBe(0n);
@@ -93,20 +98,53 @@ describe('Allocation', () => {
                 value: toNano("0.05")
             },
             {
-                $$type: 'ClaimWithReceiver',
+                $$type: 'Claim',
                 receiver: receiver.address,
             }
         );
         expect(result.transactions).toHaveTransaction({
             from: deployer.address,
             to: allocation.address,
-            body: beginCell().store(storeClaimWithReceiver({
-                $$type: 'ClaimWithReceiver',
+            body: beginCell().store(storeClaim({
+                $$type: 'Claim',
                 receiver: receiver.address,
             })).endCell(),
             deploy: false,
             success: true
         });
+
+        let allocationStateAfterClaim = await allocation.getAllocationState();
+        expect(allocationStateAfterClaim.claimable).toBe(0n);
+        expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
+    });
+
+
+    it('should claim with a null receiver', async () => {
+        let allocationStateBeforeClaim = await allocation.getAllocationState();
+        expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
+        expect(allocationStateBeforeClaim.claimed).toBe(0n);
+        let receiver = await blockchain.treasury('receiver');
+        let result = await allocation.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: 'Claim',
+                receiver: null,
+            }
+        );
+        expect(result.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: allocation.address,
+            body: beginCell().store(storeClaim({
+                $$type: 'Claim',
+                receiver: null,
+            })).endCell(),
+            deploy: false,
+            success: true
+        });
+
         let allocationStateAfterClaim = await allocation.getAllocationState();
         expect(allocationStateAfterClaim.claimable).toBe(0n);
         expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);

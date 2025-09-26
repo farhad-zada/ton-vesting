@@ -3,6 +3,7 @@ import { toNano } from '@ton/core';
 import { Vesting } from '../build/Vesting/Vesting_Vesting';
 import '@ton/test-utils';
 import { Allocation } from '../build/Allocation/Allocation_Allocation';
+import { Unknown } from '@tact-lang/compiler/dist/asm/logs/grammar';
 
 describe('Vesting', () => {
     let blockchain: Blockchain;
@@ -270,5 +271,49 @@ describe('Vesting', () => {
         expect(allocationState.amount).toBe(amount);
         expect(allocationState.unlocked).toBeGreaterThan(0n);
         expect(allocationState.unlocked).toBe(toNano("500"));
+    })
+
+    it.only("should find allocation address without deployment deterministically", async () => {
+        let allocationBeforeDeployment = blockchain.openContract(await Allocation.fromInit({
+            $$type: 'AllocationInit',
+            vesting: vesting.address,
+            vested: deployer.address
+        }));
+
+        let throwed = false;
+        try {
+            await allocationBeforeDeployment.getAllocationState();
+        } catch (error) {
+            throwed = true;
+        }
+        expect(throwed).toBe(true);
+
+        let result = await vesting.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: 'Allocate',
+                vested: deployer.address,
+                amount: toNano("1000")
+            }
+        );
+
+        expect(result.transactions).toHaveTransaction({
+            from: vesting.address,
+            to: allocationBeforeDeployment.address,
+            deploy: true,
+            success: true,
+        });
+
+         expect(result.transactions).toHaveTransaction({
+            from: allocationBeforeDeployment.address,
+            to: vesting.address,
+            deploy: false,
+            success: true,
+        });
+
+        let allocationState = await allocationBeforeDeployment.getAllocationState()
     })
 });

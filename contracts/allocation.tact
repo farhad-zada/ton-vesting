@@ -15,10 +15,8 @@ struct AllocationState {
     schedule: VestingSchedule;
 }
 
-message(0xfc264fcd) Claim {}
-
-message(0x56adee14) ClaimWithReceiver {
-    receiver: Address;
+message(0xfc264fcd) Claim {
+    receiver: Address?;
 }
 
 contract Allocation {
@@ -49,20 +47,17 @@ contract Allocation {
 
     // TODO: handle bounce cases to redo this func
     receive(msg: Claim) {
-        throwUnless(2403, sender() == self.vested);
+        let sender = sender(); 
+        throwUnless(2403, sender == self.vested);
         let unlocked = self.unlocked();
         let claimable = unlocked - self.claimed;
         self.claimed = unlocked;
+        let receiver: Address = sender;
+        if (msg.receiver != null) {
+            receiver = msg.receiver!!;
+        } 
         // TODO: implement jetton transfer
-    }
-
-    // TODO: handle bounce cases to redo this func
-    receive(msg: ClaimWithReceiver) {
-        throwUnless(2403, sender() == self.vested);
-        let unlocked = self.unlocked();
-        let claimable = unlocked - self.claimed;
-        self.claimed = unlocked;
-        // TODO: implement jetton transfer
+        cashback(sender);
     }
 
     get fun allocationState(): AllocationState {

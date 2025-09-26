@@ -47,9 +47,7 @@ contract Vesting {
         self.owner = data.owner;
     }
 
-    receive() {
-        cashback(sender());
-    }
+    receive() {} // store incoming value
 
     receive(msg: SetVestingSchedule) {
         let sender: Address = sender();
