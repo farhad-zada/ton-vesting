@@ -22,8 +22,9 @@ message(0xfc264fcd) Claim {
 contract Allocation {
     vesting: Address; // the parent vesting contract address
     vested: Address; // the wallet that would claim the amount
-    amount: Int as uint256 = 0;
-    claimed: Int as uint256 = 0;
+    jettonWallet: Address?; // the jetton wallet address of this Allocation contract
+    amount: Int as coins = 0;
+    claimed: Int as coins = 0;
 
     // vesting schedule
     startsAt: Int as uint32 = 0;
@@ -37,17 +38,28 @@ contract Allocation {
 
     receive(msg: DeployAllocation) {
         let sender: Address = sender();
-        throwUnless(2403, self.vesting == sender);
-        self.amount = msg.amount;
+        require(self.vesting == sender, "Only Vesting contract can deploy.");
+        require(self.jettonWallet == null, "Double deploy not allowed.");
+        self.jettonWallet = msg.jettonWallet;
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
         self.cycles = msg.cycles;
         cashback(sender);
     }
 
+    receive(msg: JettonTransferNotification) {
+        require(sender() == self.jettonWallet, "Unrecognized Jetton Wallet.");
+        self.amount += msg.amount;
+        let comment: Cell = beginComment()
+            .concat("Amount set to ")
+            .concat(msg.amount.toCoinsString())
+            .toCell();
+        emit(comment);
+    }
+
     // TODO: handle bounce cases to redo this func
     receive(msg: Claim) {
-        let sender = sender(); 
+        let sender = sender();
         throwUnless(2403, sender == self.vested);
         let unlocked = self.unlocked();
         let claimable = unlocked - self.claimed;
@@ -55,7 +67,7 @@ contract Allocation {
         let receiver: Address = sender;
         if (msg.receiver != null) {
             receiver = msg.receiver!!;
-        } 
+        }
         // TODO: implement jetton transfer
         cashback(sender);
     }

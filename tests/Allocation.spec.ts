@@ -1,6 +1,6 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { beginCell, Cell, toNano } from '@ton/core';
-import { Allocation } from '../build/Allocation/Allocation_Allocation';
+import { Allocation, storeJettonTransferNotification } from '../build/Allocation/Allocation_Allocation';
 import '@ton/test-utils';
 import { storeClaim } from '../build/Vesting/Vesting_Vesting';
 
@@ -22,7 +22,6 @@ describe('Allocation', () => {
             }
         ));
 
-        let amount = toNano("1000");
         let startsAt = BigInt(Math.floor(Date.now() / 1000)) - 100n;
         let interval = 10n;
         let cycles = 20n;
@@ -34,10 +33,24 @@ describe('Allocation', () => {
             },
             {
                 $$type: 'DeployAllocation',
-                amount,
+                jettonWallet: deployer.address,
                 startsAt,
                 interval,
                 cycles,
+            },
+        );
+
+        await allocation.send(
+            deployer.getSender(),
+            {
+                value: toNano('0.05'),
+            },
+            {
+                $$type: 'JettonTransferNotification',
+                sender: deployer.address,
+                queryId: 0n,
+                amount: toNano("1000"),
+                forwardPayload: beginCell().asSlice(),
             },
         );
 
@@ -118,7 +131,6 @@ describe('Allocation', () => {
         expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
     });
 
-
     it('should claim with a null receiver', async () => {
         let allocationStateBeforeClaim = await allocation.getAllocationState();
         expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
@@ -149,4 +161,61 @@ describe('Allocation', () => {
         expect(allocationStateAfterClaim.claimable).toBe(0n);
         expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
     });
+
+    it('should receive jetton transfer notification', async () => {
+        let trxResult = await allocation.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: "JettonTransferNotification",
+                queryId: 0n,
+                amount: 250n,
+                sender: deployer.address,
+                forwardPayload: beginCell().asSlice()
+            }
+        )
+
+        expect(trxResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: allocation.address,
+            success: true,
+        });
+    })
+
+    it("should set amount on jetton transfer notification", async () => {
+        let allocationStateBefore = await allocation.getAllocationState();
+        expect(allocationStateBefore.amount).toBe(toNano("1000"));
+        let amount = 100000n;
+        let trxResult = await allocation.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: "JettonTransferNotification",
+                queryId: 0n,
+                amount,
+                sender: deployer.address,
+                forwardPayload: beginCell().asSlice()
+            }
+        )
+
+        expect(trxResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: allocation.address,
+            success: true,
+            body: beginCell().store(storeJettonTransferNotification({
+                $$type: "JettonTransferNotification",
+                queryId: 0n,
+                amount,
+                sender: deployer.address,
+                forwardPayload: beginCell().asSlice()
+            })).endCell(),
+        });
+
+        let allocationState = await allocation.getAllocationState();
+        expect(allocationState.amount).toBe(toNano("1000") + amount);
+    })
 });

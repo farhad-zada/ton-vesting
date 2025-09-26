@@ -49,6 +49,11 @@ contract Vesting {
 
     receive() {} // store incoming value
 
+    receive(msg: JettonTransferNotification) {
+        let allocation = Allocate.fromSlice(msg.forwardPayload);
+        self.interval = allocation.amount;
+    }
+
     receive(msg: SetVestingSchedule) {
         let sender: Address = sender();
         throwUnless(2403, self.owner == sender);
@@ -66,19 +71,36 @@ contract Vesting {
                 vested: msg.vested,
             },
         );
+        let allocationAddress: Address = contractAddress(allocationInit);
+
         deploy(
             DeployParameters {
                 init: allocationInit,
                 mode: SendRemainingValue,
                 value: 0,
                 body: DeployAllocation {
-                    amount: msg.amount,
+                    jettonWallet: sender(),
                     startsAt: self.startsAt,
                     interval: self.interval,
                     cycles: self.cycles,
                 }.toCell(),
             },
         );
+
+        // here we send a transfer jetton to the Vesting Jetton Wallet
+        message(MessageParameters {
+            to: sender(),
+            value: 0,
+            mode: SendRemainingBalance,
+            body: JettonTransfer {
+                queryId: 2000,
+                amount: msg.amount,
+                destination: allocationAddress,
+                responseDestination: allocationAddress,
+                forwardTonAmount: 1,
+                forwardPayload: beginCell().storeCoins(msg.amount).asSlice(),
+            }.toCell(),
+        });
     }
 
     receive(msg: AllocateWithCustomSchedule) {
@@ -95,7 +117,7 @@ contract Vesting {
                 mode: SendRemainingValue,
                 value: 0,
                 body: DeployAllocation {
-                    amount: msg.amount,
+                    jettonWallet: sender(),
                     startsAt: msg.schedule.startsAt,
                     interval: msg.schedule.interval,
                     cycles: msg.schedule.cycles,

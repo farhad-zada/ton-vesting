@@ -1,9 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { toNano } from '@ton/core';
+import { beginCell, toNano } from '@ton/core';
 import { Vesting } from '../build/Vesting/Vesting_Vesting';
 import '@ton/test-utils';
 import { Allocation } from '../build/Allocation/Allocation_Allocation';
-import { Unknown } from '@tact-lang/compiler/dist/asm/logs/grammar';
+import { Cell, Unknown } from '@tact-lang/compiler/dist/asm/logs/grammar';
+import { storeAllocate, storeJettonTransferNotification } from '../build/Vesting/Vesting_Allocation';
 
 describe('Vesting', () => {
     let blockchain: Blockchain;
@@ -273,7 +274,7 @@ describe('Vesting', () => {
         expect(allocationState.unlocked).toBe(toNano("500"));
     })
 
-    it.only("should find allocation address without deployment deterministically", async () => {
+    it("should find allocation address without deployment deterministically", async () => {
         let allocationBeforeDeployment = blockchain.openContract(await Allocation.fromInit({
             $$type: 'AllocationInit',
             vesting: vesting.address,
@@ -307,7 +308,7 @@ describe('Vesting', () => {
             success: true,
         });
 
-         expect(result.transactions).toHaveTransaction({
+        expect(result.transactions).toHaveTransaction({
             from: allocationBeforeDeployment.address,
             to: vesting.address,
             deploy: false,
@@ -315,5 +316,37 @@ describe('Vesting', () => {
         });
 
         let allocationState = await allocationBeforeDeployment.getAllocationState()
+    })
+
+    it.only("should send jetton transfer notification", async () => {
+        let trxResult = await vesting.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: "JettonTransferNotification",
+                queryId: 0n,
+                amount: toNano("1000"),
+                sender: deployer.address,
+                forwardPayload: beginCell().storeCoins(toNano("2000")).asSlice()
+            }
+        )
+
+        expect(trxResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: vesting.address,
+            success: true,
+            body: beginCell().store(storeJettonTransferNotification({
+                $$type: "JettonTransferNotification",
+                queryId: 0n,
+                amount: toNano("1000"),
+                sender: deployer.address,
+                forwardPayload: beginCell().storeCoins(toNano("2000")).asSlice()
+            })).endCell(),
+        });
+
+        let vestingState = await vesting.getVestingState();
+        console.log(vestingState);
     })
 });
