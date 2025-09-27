@@ -146,7 +146,7 @@ describe('Allocation', () => {
         expect(allocationState.claimable).toBe(toNano("50"));
     });
 
-    it.only('should claim', async () => {
+    it('should claim', async () => {
         // allocate
         let allocationResult = await allocate(allocation.address, toNano("100"));
         expect(allocationResult.transactions).toHaveTransaction({
@@ -201,9 +201,8 @@ describe('Allocation', () => {
         expect(allocationStateAfterClaim.claimable).toBe(0n);
         expect(allocationStateAfterClaim.claimed).toBe(toNano("50"));
 
-        console.log(fromNano(allocationStateAfterClaim.storageFee));
-        console.log(allocationStateAfterClaim);
-        console.log(fromNano(await allocation.getBalance()));
+        // console.log(fromNano(allocationStateAfterClaim.storageFee));
+        // console.log(allocationStateAfterClaim);
     });
 
     it('should claim with a receiver', async () => {
