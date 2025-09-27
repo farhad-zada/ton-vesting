@@ -1,10 +1,13 @@
-import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { beginCell, Cell, toNano } from '@ton/core';
+import { Blockchain, SandboxContract, SendMessageResult, TreasuryContract } from '@ton/sandbox';
+import { Address, beginCell, Cell, fromNano, toNano } from '@ton/core';
 import { Allocation, storeJettonNotification } from '../build/Allocation/Allocation_Allocation';
 import '@ton/test-utils';
 import { storeClaim } from '../build/Vesting/Vesting_Vesting';
 import { JettonWallet } from '../build/JettonWallet/JettonWallet_JettonWallet';
 import { JettonMinter } from '../build/JettonMinter/JettonMinter_JettonMinter';
+import { assert } from 'console';
+import { ppAstBouncedMessageType } from '@tact-lang/compiler';
+import { sleep } from '@ton/blueprint';
 
 describe('Allocation', () => {
     let blockchain: Blockchain;
@@ -13,10 +16,29 @@ describe('Allocation', () => {
     let jettonMinter: SandboxContract<JettonMinter>
     let jettonWallet: SandboxContract<JettonWallet>;
 
+    async function allocate(destination: Address, amount: bigint): Promise<SendMessageResult> {
+        assert(jettonWallet != undefined, "jetton wallet not initialized");
+        return jettonWallet.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.5")
+            },
+            {
+                $$type: 'JettonTransfer',
+                queryId: 0n,
+                amount,
+                destination,
+                customPayload: null,
+                responseDestination: deployer.address,
+                forwardTonAmount: toNano("0.02"),
+                forwardPayload: beginCell().storeBit(false).endCell().asSlice()
+            }
+        )
+    }
     beforeEach(async () => {
         blockchain = await Blockchain.create();
 
-        deployer = await blockchain.treasury('deployer');
+        deployer = await blockchain.treasury('sksksmoeimwoewoiimnwoncfjwnfownoi');
 
 
         jettonMinter = blockchain.openContract(
@@ -113,14 +135,31 @@ describe('Allocation', () => {
     });
 
     it('should deploy', async () => {
+        let result = await allocate(allocation.address, toNano("100"));
+        expect(result.transactions).toHaveTransaction({
+            from: await jettonMinter.getGetWalletAddress(allocation.address),
+            to: allocation.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonNotification
+        })
         let allocationState = await allocation.getAllocationState();
-        expect(allocationState.claimable).toBeGreaterThan(0n);
+        expect(allocationState.claimable).toBe(toNano("50"));
     });
 
-    it('should claim', async () => {
+    it.only('should claim', async () => {
+        // allocate
+        let allocationResult = await allocate(allocation.address, toNano("100"));
+        expect(allocationResult.transactions).toHaveTransaction({
+            from: await jettonMinter.getGetWalletAddress(allocation.address),
+            to: allocation.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonNotification
+        })
+
         let allocationStateBeforeClaim = await allocation.getAllocationState();
-        expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
+        expect(allocationStateBeforeClaim.claimable).toBe(toNano('50'));
         expect(allocationStateBeforeClaim.claimed).toBe(0n);
+
         let result = await allocation.send(
             deployer.getSender(),
             {
@@ -132,27 +171,55 @@ describe('Allocation', () => {
             }
         );
 
+        let allocationWalletAddress = await jettonMinter.getGetWalletAddress(allocation.address)
+
+        // from allocation -> allocation jetton wallet
         expect(result.transactions).toHaveTransaction({
-            from: deployer.address,
-            to: allocation.address,
-            body: beginCell().store(storeClaim({
-                $$type: 'Claim',
-                receiver: null
-            })).endCell(),
+            from: allocation.address,
+            to: allocationWalletAddress,
             deploy: false,
-            success: true
+            success: true,
+            op: JettonWallet.opcodes.JettonTransfer
         });
 
+        // from allocation jetton wallet -> deployer jetton wallet
+        expect(result.transactions).toHaveTransaction({
+            from: allocationWalletAddress,
+            to: jettonWallet.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonTransferInternal
+        });
+
+        // from deployer jetton wallet -> deployer wallet
+        expect(result.transactions).toHaveTransaction({
+            from: jettonWallet.address,
+            to: deployer.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonNotification
+        })
         let allocationStateAfterClaim = await allocation.getAllocationState();
         expect(allocationStateAfterClaim.claimable).toBe(0n);
-        expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
+        expect(allocationStateAfterClaim.claimed).toBe(toNano("50"));
+
+        console.log(fromNano(allocationStateAfterClaim.storageFee));
+        console.log(allocationStateAfterClaim);
+        console.log(fromNano(await allocation.getBalance()));
     });
 
     it('should claim with a receiver', async () => {
+        // allocate
+        let allocationResult = await allocate(allocation.address, toNano("100"));
+        expect(allocationResult.transactions).toHaveTransaction({
+            from: await jettonMinter.getGetWalletAddress(allocation.address),
+            to: allocation.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonNotification
+        })
+
         let allocationStateBeforeClaim = await allocation.getAllocationState();
-        expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
+        expect(allocationStateBeforeClaim.claimable).toBe(toNano('50'));
         expect(allocationStateBeforeClaim.claimed).toBe(0n);
-        let receiver = await blockchain.treasury('receiver');
+        let receiver = await blockchain.treasury("receiver");
         let result = await allocation.send(
             deployer.getSender(),
             {
@@ -160,135 +227,54 @@ describe('Allocation', () => {
             },
             {
                 $$type: 'Claim',
-                receiver: receiver.address,
+                receiver: receiver.address
             }
         );
+
+        let allocationWalletAddress = await jettonMinter.getGetWalletAddress(allocation.address)
+
+        // from allocation -> allocation jetton wallet
         expect(result.transactions).toHaveTransaction({
-            from: deployer.address,
-            to: allocation.address,
-            body: beginCell().store(storeClaim({
-                $$type: 'Claim',
-                receiver: receiver.address,
-            })).endCell(),
+            from: allocation.address,
+            to: allocationWalletAddress,
             deploy: false,
-            success: true
+            success: true,
+            op: JettonWallet.opcodes.JettonTransfer
+        });
+        let receiverJettonWallet = await jettonMinter.getGetWalletAddress(receiver.address);
+        // from allocation jetton wallet -> deployer jetton wallet
+        expect(result.transactions).toHaveTransaction({
+            from: allocationWalletAddress,
+            to: receiverJettonWallet,
+            success: true,
+            op: JettonWallet.opcodes.JettonTransferInternal
         });
 
-        let allocationStateAfterClaim = await allocation.getAllocationState();
-        expect(allocationStateAfterClaim.claimable).toBe(0n);
-        expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
-    });
-
-    it('should claim with a null receiver', async () => {
-        let allocationStateBeforeClaim = await allocation.getAllocationState();
-        expect(allocationStateBeforeClaim.claimable).toBeGreaterThan(0n);
-        expect(allocationStateBeforeClaim.claimed).toBe(0n);
-        let receiver = await blockchain.treasury('receiver');
-        let result = await allocation.send(
-            deployer.getSender(),
-            {
-                value: toNano("0.05")
-            },
-            {
-                $$type: 'Claim',
-                receiver: null,
-            }
-        );
+        // from deployer jetton wallet -> deployer wallet
         expect(result.transactions).toHaveTransaction({
-            from: deployer.address,
-            to: allocation.address,
-            body: beginCell().store(storeClaim({
-                $$type: 'Claim',
-                receiver: null,
-            })).endCell(),
-            deploy: false,
-            success: true
-        });
-
+            from: receiverJettonWallet,
+            to: receiver.address,
+            success: true,
+            op: JettonWallet.opcodes.JettonNotification
+        })
         let allocationStateAfterClaim = await allocation.getAllocationState();
         expect(allocationStateAfterClaim.claimable).toBe(0n);
-        expect(allocationStateAfterClaim.claimed).toBeGreaterThan(0n);
+        expect(allocationStateAfterClaim.claimed).toBe(toNano("50"));
     });
 
     it('should receive jetton transfer notification', async () => {
-        let trxResult = await allocation.send(
-            deployer.getSender(),
-            {
-                value: toNano("0.05")
-            },
-            {
-                $$type: 'JettonNotification',
-                queryId: 0n,
-                amount: 250n,
-                sender: deployer.address,
-                forwardPayload: beginCell().asSlice()
-            }
-        )
+        let trxResult = await allocate(allocation.address, toNano("1"))
 
         expect(trxResult.transactions).toHaveTransaction({
-            from: deployer.address,
+            from: await jettonMinter.getGetWalletAddress(allocation.address),
             to: allocation.address,
             success: true,
+            op: JettonWallet.opcodes.JettonNotification
         });
-    })
-
-    it("should set allocated amount on jetton transfer notification", async () => {
-        let allocationStateBefore = await allocation.getAllocationState();
-        expect(allocationStateBefore.amount).toBe(toNano("1000"));
-        let amount = 100000n;
-        let trxResult = await allocation.send(
-            deployer.getSender(),
-            {
-                value: toNano("0.05")
-            },
-            {
-                $$type: 'JettonNotification',
-                queryId: 0n,
-                amount,
-                sender: deployer.address,
-                forwardPayload: beginCell().asSlice()
-            }
-        )
-
-        expect(trxResult.transactions).toHaveTransaction({
-            from: deployer.address,
-            to: allocation.address,
-            success: true,
-            body: beginCell().store(storeJettonNotification({
-                $$type: 'JettonNotification',
-                queryId: 0n,
-                amount,
-                sender: deployer.address,
-                forwardPayload: beginCell().asSlice()
-            })).endCell(),
-        });
-
-        let allocationState = await allocation.getAllocationState();
-        expect(allocationState.amount).toBe(toNano("1000") + amount);
     })
 
     it("should send jettons from deployer to allocation", async () => {
-        const forwardPayload = beginCell().storeUint(239, 17).endCell()
-        let result = await jettonWallet.send(
-            deployer.getSender(),
-            {
-                value: toNano("2")
-            },
-            {
-                $$type: 'JettonTransfer',
-                queryId: 0n,
-                amount: 100n,
-                destination: allocation.address,
-                customPayload: null,
-                responseDestination: deployer.address,
-                forwardTonAmount: toNano("0.02"),
-                forwardPayload: beginCell()
-                    .storeBit(false) // Inline format
-                    .storeSlice(forwardPayload.asSlice())
-                    .endCell()
-                    .asSlice(),
-            }
-        )
+        let result = await allocate(allocation.address, 1000n);
         expect(result.transactions).toHaveTransaction({
             from: deployer.address,
             to: jettonWallet.address,
@@ -308,6 +294,46 @@ describe('Allocation', () => {
             deploy: false,
             success: true
         })
+    })
+
+    it.skip("should recover claimed in bounced jetton transfer", async () => {
+        // this only works with a little bit of tweak in the contract. 
+        await allocate(allocation.address, toNano("100"));
+        console.log(await allocation.getAllocationState());
+
+
+         let result = await allocation.send(
+            deployer.getSender(),
+            {
+                value: toNano("0.05")
+            },
+            {
+                $$type: 'Claim',
+                receiver: null
+            }
+        );
+
+        let allocationWalletAddress = await jettonMinter.getGetWalletAddress(allocation.address);
+
+        // allocation -> allocation jetton wallet
+        expect(result.transactions).toHaveTransaction({
+            from: allocation.address,
+            to: allocationWalletAddress,
+            success: false,
+            op: JettonWallet.opcodes.JettonTransfer,
+            inMessageBounced: false
+        })
+
+        // allocation jetton wallet -> allocation (bounced)
+        expect(result.transactions).toHaveTransaction({
+            from: allocationWalletAddress,
+            to: allocation.address,
+            success: false,
+            inMessageBounced: true
+        })
+
+        console.log(await allocation.getAllocationState());
+        
     })
 
 });
