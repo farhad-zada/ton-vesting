@@ -1,5 +1,6 @@
 import "./common";
 import "./messages";
+import "./exit_codes";
 
 struct AllocationInit {
     vesting: Address;
@@ -53,13 +54,12 @@ contract Allocation {
         self.vested = data.vested;
     }
 
-    receive() {
-    }
+    receive() {}
 
     receive(msg: DeployAllocation) {
         let sender: Address = sender();
-        throwUnless(403, self.vesting == sender);
-        throwUnless(400, self.jettonWallet == null);
+        throwUnless(NOT_OWNER, self.vesting == sender);
+        throwUnless(UNRECOGNIZED_JETTON_WALLET, self.jettonWallet == null);
         self.jettonWallet = msg.jettonWallet;
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
@@ -80,7 +80,7 @@ contract Allocation {
     // TODO: handle bounce cases to redo this func
     receive(msg: Claim) {
         let sender = sender();
-        throwUnless(403, sender == self.vested);
+        throwUnless(NOT_OWNER, sender == self.vested);
         let unlocked = self.unlocked();
         let claimable = unlocked - self.claimed;
         self.previousClaimed = self.claimed;
@@ -89,6 +89,7 @@ contract Allocation {
         if (msg.receiver != null) {
             receiver = msg.receiver!!;
         }
+        throwUnless(NO_CLAIMABLE, claimable >= 0);
         message(self.jettonTransferMessage(claimable, receiver));
     }
 

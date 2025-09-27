@@ -1,29 +1,12 @@
 import "./common";
 import "./allocation";
 import "./messages";
+import "./exit_codes";
 
 struct VestingInit {
     uid: Int as uint32;
     owner: Address;
     title: String;
-}
-
-message(0x2ab9ebe8) VestingDeployment {
-    title: String;
-    startsAt: Int as uint32;
-    interval: Int as uint32;
-    cycles: Int as uint32;
-}
-
-message(0x6bb4e20f) Allocate {
-    vested: Address;
-    amount: Int as uint256;
-}
-
-message(0x64587da4) AllocateWithCustomSchedule {
-    vested: Address;
-    amount: Int as uint256;
-    schedule: VestingSchedule;
 }
 
 struct VestingState {
@@ -35,9 +18,12 @@ struct VestingState {
 
 // TODO: you should handle jettons too
 contract Vesting {
-    uid: Int as uint32;
+    uid: Int as uint32; // provides a way to have dublication on `owner` & `title`
     owner: Address;
     title: String;
+
+    jettonWallet: Address?;
+
     startsAt: Int as uint32 = 0;
     interval: Int as uint32 = 0;
     cycles: Int as uint32 = 0;
@@ -50,14 +36,10 @@ contract Vesting {
 
     receive() {} // store incoming value
 
-    receive(msg: JettonNotification) {
-        let allocation = Allocate.fromSlice(msg.forwardPayload);
-        self.interval = allocation.amount;
-    }
-
-    receive(msg: SetVestingSchedule) {
+    receive(msg: VestingSetup) {
         let sender: Address = sender();
-        throwUnless(2403, self.owner == sender);
+        throwUnless(NOT_OWNER, self.owner == sender);
+        self.jettonWallet = msg.jettonWallet;
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
         self.cycles = msg.cycles;
@@ -65,14 +47,14 @@ contract Vesting {
     }
 
     receive(msg: Allocate) {
-        throwUnless(2403, sender() == self.owner);
+        let sender: Address = sender();
+        throwUnless(NOT_OWNER, sender == self.owner);
         let allocationInit: StateInit = initOf Allocation(
             AllocationInit {
                 vesting: myAddress(),
                 vested: msg.vested,
             },
         );
-        let allocationAddress: Address = contractAddress(allocationInit);
 
         deploy(
             DeployParameters {
@@ -80,7 +62,7 @@ contract Vesting {
                 mode: SendRemainingValue,
                 value: 0,
                 body: DeployAllocation {
-                    jettonWallet: sender(),
+                    jettonWallet: msg.jettonWallet,
                     startsAt: self.startsAt,
                     interval: self.interval,
                     cycles: self.cycles,
@@ -88,24 +70,27 @@ contract Vesting {
             },
         );
 
+        let allocationAddress: Address = contractAddress(allocationInit);
         // here we send a transfer jetton to the Vesting Jetton Wallet
         message(MessageParameters {
-            to: sender(),
+            to: self.jettonWallet!!,
             value: 0,
-            mode: SendRemainingBalance,
+            mode: SendRemainingValue,
             body: JettonTransfer {
-                queryId: 2000,
+                queryId: msg.queryId,
                 amount: msg.amount,
                 destination: allocationAddress,
                 responseDestination: allocationAddress,
                 forwardTonAmount: 1,
-                forwardPayload: beginCell().storeCoins(msg.amount).asSlice(),
+                forwardPayload: beginCell().storeBit(false).asSlice(),
             }.toCell(),
         });
     }
 
     receive(msg: AllocateWithCustomSchedule) {
-        throwUnless(2403, sender() == self.owner);
+        let sender: Address = sender();
+
+        throwUnless(NOT_OWNER, sender == self.owner);
         let allocationInit: StateInit = initOf Allocation(
             AllocationInit {
                 vesting: myAddress(),
@@ -118,13 +103,28 @@ contract Vesting {
                 mode: SendRemainingValue,
                 value: 0,
                 body: DeployAllocation {
-                    jettonWallet: sender(),
+                    jettonWallet: msg.jettonWallet,
                     startsAt: msg.schedule.startsAt,
                     interval: msg.schedule.interval,
                     cycles: msg.schedule.cycles,
                 }.toCell(),
             },
         );
+
+        let allocationAddress: Address = contractAddress(allocationInit);
+        message(MessageParameters {
+            to: self.jettonWallet!!,
+            value: 0,
+            mode: SendRemainingValue,
+            body: JettonTransfer {
+                queryId: msg.queryId,
+                amount: msg.amount,
+                destination: allocationAddress,
+                responseDestination: allocationAddress,
+                forwardTonAmount: 1,
+                forwardPayload: beginCell().storeBit(false).asSlice(),
+            }.toCell(),
+        });
     }
 
     get fun vestingState(): VestingState {

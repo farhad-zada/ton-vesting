@@ -1,0 +1,3 @@
+const NOT_OWNER: Int = 403;
+const UNRECOGNIZED_JETTON_WALLET: Int = 404;
+const NO_CLAIMABLE: Int = 405;

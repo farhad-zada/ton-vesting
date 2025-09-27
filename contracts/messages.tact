@@ -1,3 +1,5 @@
+import "./common";
+
 struct JettonData {
     totalSupply: Int;
     mintable: Bool;
@@ -115,4 +117,23 @@ message(0xca77fdc2) TakeWalletBalance {
 // claim_ton#0393b1ce receiver:MsgAddress = InternalMsgBody
 message(0x0393b1ce) ClaimTON {
     receiver: Address;
+}
+
+
+
+//// VESTING //// 
+
+message(0x6bb4e20f) Allocate {
+    queryId: Int as uint64;
+    vested: Address;
+    amount: Int as uint256;
+    jettonWallet: Address;
+}
+
+message(0x64587da4) AllocateWithCustomSchedule{
+    queryId: Int as uint64;
+    vested: Address;
+    amount: Int as uint256;
+    jettonWallet: Address;
+    schedule: VestingSchedule;
 }
