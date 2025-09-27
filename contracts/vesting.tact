@@ -1,5 +1,6 @@
 import "./common";
 import "./allocation";
+import "./messages";
 
 struct VestingInit {
     uid: Int as uint32;
@@ -49,7 +50,7 @@ contract Vesting {
 
     receive() {} // store incoming value
 
-    receive(msg: JettonTransferNotification) {
+    receive(msg: JettonNotification) {
         let allocation = Allocate.fromSlice(msg.forwardPayload);
         self.interval = allocation.amount;
     }

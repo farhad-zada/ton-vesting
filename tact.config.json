@@ -20,6 +20,36 @@
         "external": false
       },
       "mode": "full"
+    },
+    {
+      "name": "JettonMinter",
+      "path": "contracts/jetton_minter.tact",
+      "output": "build/JettonMinter",
+      "options": {
+        "debug": false,
+        "external": false
+      },
+      "mode": "full"
+    },
+    {
+      "name": "JettonWallet",
+      "path": "contracts/jetton_wallet.tact",
+      "output": "build/JettonWallet",
+      "options": {
+        "debug": false,
+        "external": false
+      },
+      "mode": "full"
+    },
+    {
+      "name": "JettonMinter",
+      "path": "contracts/jetton_minter.tact",
+      "output": "build/JettonMinter",
+      "options": {
+        "debug": false,
+        "external": false
+      },
+      "mode": "full"
     }
   ]
 }

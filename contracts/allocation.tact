@@ -1,4 +1,5 @@
 import "./common";
+import "./messages";
 
 struct AllocationInit {
     vesting: Address;
@@ -19,6 +20,13 @@ message(0xfc264fcd) Claim {
     receiver: Address?;
 }
 
+/**
+* TODO:
+* Integrate Jetton Wallet
+* Transfer Jetton Amount on claim
+* Handle cashback
+* Handle bounced Transfer for claims which can result in inconcistent state
+*/
 contract Allocation {
     vesting: Address; // the parent vesting contract address
     vested: Address; // the wallet that would claim the amount
@@ -36,6 +44,8 @@ contract Allocation {
         self.vested = data.vested;
     }
 
+    receive() {}
+
     receive(msg: DeployAllocation) {
         let sender: Address = sender();
         require(self.vesting == sender, "Only Vesting contract can deploy.");
@@ -47,14 +57,9 @@ contract Allocation {
         cashback(sender);
     }
 
-    receive(msg: JettonTransferNotification) {
+    receive(msg: JettonNotification) {
         require(sender() == self.jettonWallet, "Unrecognized Jetton Wallet.");
         self.amount += msg.amount;
-        let comment: Cell = beginComment()
-            .concat("Amount set to ")
-            .concat(msg.amount.toCoinsString())
-            .toCell();
-        emit(comment);
     }
 
     // TODO: handle bounce cases to redo this func
@@ -68,8 +73,27 @@ contract Allocation {
         if (msg.receiver != null) {
             receiver = msg.receiver!!;
         }
-        // TODO: implement jetton transfer
-        cashback(sender);
+        message(self.jettonTransferMessage(claimable, receiver));
+    }
+
+    inline fun jettonTransferMessage(amount: Int, destination: Address): MessageParameters {
+        return MessageParameters {
+            to: self.jettonWallet!!,
+            value: 0,
+            mode: SendRemainingValue,
+            body: JettonTransfer {
+                queryId: 2000,
+                amount,
+                destination,
+                responseDestination: destination,
+                forwardTonAmount: 0,
+                forwardPayload: beginCell().asSlice(),
+            }.toCell(),
+        }
+    }
+
+    inline fun unlocked(): Int {
+        return self.amount / self.cycles * ((now() - (self.startsAt)) / self.interval);
     }
 
     get fun allocationState(): AllocationState {
@@ -88,9 +112,5 @@ contract Allocation {
                 cycles: self.cycles,
             },
         };
-    }
-
-    inline fun unlocked(): Int {
-        return self.amount / self.cycles * ((now() - (self.startsAt)) / self.interval);
     }
 }
