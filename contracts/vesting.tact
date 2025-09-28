@@ -13,6 +13,8 @@ struct VestingState {
     uid: Int as uint32;
     title: String;
     owner: Address;
+    jettonWallet: Address;
+    jettonBalance: Int as coins;
     schedule: VestingSchedule;
 }
 
@@ -23,6 +25,7 @@ contract Vesting {
     title: String;
 
     jettonWallet: Address?;
+    jettonBalance: Int as coins = 0;
 
     startsAt: Int as uint32 = 0;
     interval: Int as uint32 = 0;
@@ -43,7 +46,14 @@ contract Vesting {
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
         self.cycles = msg.cycles;
+        // getForwardFee(2, 1409, false);
         cashback(sender);
+    }
+
+    receive(msg: JettonNotification) {
+        throwUnless(UNRECOGNIZED_JETTON_WALLET, sender() == self.jettonWallet);
+        self.jettonBalance += msg.amount;
+        cashback(msg.sender);
     }
 
     receive(msg: Allocate) {
@@ -132,6 +142,8 @@ contract Vesting {
             uid: self.uid,
             title: self.title,
             owner: self.owner,
+            jettonWallet: self.jettonWallet!!,
+            jettonBalance: self.jettonBalance,
             schedule: VestingSchedule {
                 startsAt: self.startsAt,
                 interval: self.interval,

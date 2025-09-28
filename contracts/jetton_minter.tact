@@ -21,6 +21,8 @@ contract JettonMinter(
     // however minting is possible only to basechain addresses
     // it is asserted inside the deploy function
     receive() {} // store incoming value
+
+    
     receive(msg: Mint) {
         require(sender() == self.owner, "Incorrect sender");
         require(self.mintable, "Mint is closed");
