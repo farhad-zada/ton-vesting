@@ -46,7 +46,6 @@ contract Vesting {
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
         self.cycles = msg.cycles;
-        // getForwardFee(2, 1409, false);
         cashback(sender);
     }
 
