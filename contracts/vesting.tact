@@ -39,9 +39,13 @@ contract Vesting {
 
     receive() {} // store incoming value
 
+    // TODO: test
+    // 1. should set up vesting with jetton wallet, balance, schedule correctly
+    // 2. should throw on try to set paramethers again
     receive(msg: VestingSetup) {
         let sender: Address = sender();
         throwUnless(NOT_OWNER, self.owner == sender);
+        throwUnless(VESTING_ALREADY_SET_UP, self.jettonWallet == null);
         self.jettonWallet = msg.jettonWallet;
         self.startsAt = msg.startsAt;
         self.interval = msg.interval;
@@ -49,15 +53,26 @@ contract Vesting {
         cashback(sender);
     }
 
+    // only the authorized wallet can send jetton notifications which updates jetton balance
+    // TODO: test
+    // 1. Unauthorized jetton transfers are not allowed
+    // 2. Authorized jetton transfers should succeed and also update jetton balance
+    // 3. Should cash back jettons to the sender
     receive(msg: JettonNotification) {
         throwUnless(UNRECOGNIZED_JETTON_WALLET, sender() == self.jettonWallet);
         self.jettonBalance += msg.amount;
         cashback(msg.sender);
     }
 
+    // TODO: test
+    // 1. onyl owner can allocate
+    // 2. should throw on unefficient gas amount
+    // 3. should deploy new allocation
+    // 4. should transfer jetton to the jetton wallet of the new Allocation contract
     receive(msg: Allocate) {
         let sender: Address = sender();
         throwUnless(NOT_OWNER, sender == self.owner);
+        throwUnless(INSUFFICIENT_JETTON_BALANCE, self.jettonBalance >= msg.amount);
         let allocationInit: StateInit = initOf Allocation(
             AllocationInit {
                 vesting: myAddress(),
@@ -96,10 +111,16 @@ contract Vesting {
         });
     }
 
+    // create allocation with custom schedule provided, this if for specific cases where some or may be all of
+    // the allocations need to have a custom schedule
+    // does not have checks on the schedule being after current timestamp
+    // TODO: test
+    // 1. should check the cycles to be >= 1
     receive(msg: AllocateWithCustomSchedule) {
         let sender: Address = sender();
 
         throwUnless(NOT_OWNER, sender == self.owner);
+        throwUnless(INCORRECT_CYCLES, msg.schedule.cycles <= 0);
         let allocationInit: StateInit = initOf Allocation(
             AllocationInit {
                 vesting: myAddress(),

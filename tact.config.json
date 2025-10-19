@@ -50,6 +50,16 @@
         "external": false
       },
       "mode": "full"
+    },
+    {
+      "name": "Loopy",
+      "path": "contracts/loopy.tact",
+      "output": "build/Loopy",
+      "options": {
+        "debug": false,
+        "external": false
+      },
+      "mode": "full"
     }
   ]
 }

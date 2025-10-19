@@ -28,6 +28,7 @@ message(0xfc264fcd) Claim {
 * TODO:
 * Handle cashback
 * Calculate fees & hardcode
+* Lock for a cycle or bounced message on claim
 */
 contract Allocation {
     vesting: Address; // the parent vesting contract address
